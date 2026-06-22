@@ -1221,7 +1221,8 @@ Raw Korean emotional feeling with minimal background.`
       const synRaw = document.getElementById('syn' + i).value;
       const syns = synRaw.split(',').map(s => s.trim()).filter(s => s.length > 0);
       if (syns.indexOf(name) === -1) syns.unshift(name);
-      state.emotions.push({ name, pct, syns, ...COLORS[i] });
+      const expandedSyns = expandSynonyms(name, syns);
+      state.emotions.push({ name, pct, syns: expandedSyns, ...COLORS[i] });
     }
 
     goToStep(4);
@@ -1291,11 +1292,64 @@ Raw Korean emotional feeling with minimal background.`
   /* ── 감정 맞히기 로직 (카드메이커와 동일) ── */
   function normalize(s) { return s.replace(/\s/g, '').toLowerCase(); }
 
+  const EMOTION_SYNONYM_BANK = {
+    '미안함': ['미안', '미안해', '미안하다', '미안해요', '죄송', '죄송해요', '죄송합니다', '사과', '사과해', '사과하고싶어', '잘못했어', '내잘못', '미안한마음'],
+    '그리움': ['그리움', '그리워', '그립다', '보고싶어', '보고싶다', '보고싶어요', '보고파', '생각나', '생각난다', '그리운마음'],
+    '사랑': ['사랑', '사랑해', '사랑한다', '사랑해요', '좋아해', '좋아한다', '좋아', '애정', '아껴', '소중해', '마음이있어'],
+    '서운함': ['서운', '서운해', '서운하다', '섭섭', '섭섭해', '아쉬워', '아쉽다', '속상', '속상해', '마상'],
+    '외로움': ['외로움', '외로워', '외롭다', '쓸쓸', '쓸쓸해', '혼자', '혼자인느낌', '고독', '허전', '허전해'],
+    '고마움': ['고마움', '고마워', '고맙다', '감사', '감사해', '감사합니다', '고맙습니다', '은혜', '덕분'],
+    '존경': ['존경', '존경해', '존경합니다', '대단해', '멋져', '자랑스러워', '리스펙', 'respect'],
+    '후회': ['후회', '후회해', '후회된다', '아 regret', '되돌리고싶어', '돌아가고싶어', '아쉬운선택'],
+    '미움': ['미움', '미워', '미워해', '싫어', '싫다', '화나', '화남', '분노', '짜증', '원망'],
+    '불안': ['불안', '불안해', '걱정', '걱정돼', '두려워', '무서워', '초조', '초조해']
+  };
+
+  function expandSynonyms(name, syns) {
+    const set = new Set([name, ...syns].filter(Boolean));
+    const nName = normalize(name);
+
+    Object.keys(EMOTION_SYNONYM_BANK).forEach(key => {
+      if (nName === normalize(key) || nName.indexOf(normalize(key)) !== -1 || normalize(key).indexOf(nName) !== -1) {
+        EMOTION_SYNONYM_BANK[key].forEach(word => set.add(word));
+      }
+    });
+
+    // If user named an emotion with a common root, connect close variants.
+    const rootRules = [
+      ['미안', EMOTION_SYNONYM_BANK['미안함']],
+      ['죄송', EMOTION_SYNONYM_BANK['미안함']],
+      ['그리', EMOTION_SYNONYM_BANK['그리움']],
+      ['보고싶', EMOTION_SYNONYM_BANK['그리움']],
+      ['사랑', EMOTION_SYNONYM_BANK['사랑']],
+      ['좋아', EMOTION_SYNONYM_BANK['사랑']],
+      ['서운', EMOTION_SYNONYM_BANK['서운함']],
+      ['섭섭', EMOTION_SYNONYM_BANK['서운함']],
+      ['외로', EMOTION_SYNONYM_BANK['외로움']],
+      ['쓸쓸', EMOTION_SYNONYM_BANK['외로움']],
+      ['고마', EMOTION_SYNONYM_BANK['고마움']],
+      ['감사', EMOTION_SYNONYM_BANK['고마움']],
+      ['존경', EMOTION_SYNONYM_BANK['존경']],
+      ['후회', EMOTION_SYNONYM_BANK['후회']],
+      ['미워', EMOTION_SYNONYM_BANK['미움']],
+      ['싫어', EMOTION_SYNONYM_BANK['미움']],
+      ['불안', EMOTION_SYNONYM_BANK['불안']],
+      ['걱정', EMOTION_SYNONYM_BANK['불안']]
+    ];
+
+    rootRules.forEach(([root, words]) => {
+      if (nName.indexOf(normalize(root)) !== -1) words.forEach(word => set.add(word));
+    });
+
+    return Array.from(set);
+  }
+
   function detectEmotion(input) {
     const n = normalize(input.trim());
     for (const e of state.emotions) {
       for (const word of e.syns) {
-        if (normalize(word) === n || n.indexOf(normalize(word)) !== -1) {
+        const nw = normalize(word);
+        if (nw === n || n.indexOf(nw) !== -1 || (n.length >= 2 && nw.indexOf(n) !== -1)) {
           return e;
         }
       }
@@ -1601,7 +1655,7 @@ var TOTAL_EMOTIONS=Object.keys(ANSWERS).length;
 var FINISH_MSG="${FINISH_MSG.replace(/"/g, '\\"')}";
 var litSegments={};
 function normalize(s){return s.replace(/\\s/g,"").toLowerCase();}
-function detectEmotion(input){var n=normalize(input.trim());var keys=Object.keys(ANSWERS);for(var i=0;i<keys.length;i++){var key=keys[i];var words=ANSWERS[key];for(var j=0;j<words.length;j++){if(normalize(words[j])===n||n.indexOf(normalize(words[j]))!==-1){return key;}}}return null;}
+function detectEmotion(input){var n=normalize(input.trim());var keys=Object.keys(ANSWERS);for(var i=0;i<keys.length;i++){var key=keys[i];var words=ANSWERS[key];for(var j=0;j<words.length;j++){var nw=normalize(words[j]);if(nw===n||n.indexOf(nw)!==-1||(n.length>=2&&nw.indexOf(n)!==-1)){return key;}}}return null;}
 function lightUp(key){var el=document.getElementById("seg-"+key);if(!el)return;el.style.opacity="1";el.style.boxShadow="inset 0 0 0 1px rgba(255,255,255,0.15), 0 0 10px 1px rgba(255,255,255,0.18)";}
 function addTag(key){var c=document.getElementById("foundTags");var t=document.createElement("span");t.className="found-tag "+key;t.textContent=LABELS[key];c.appendChild(t);}
 function setMsg(text,color){var el=document.getElementById("resultMsg");el.textContent=text;el.style.color=color||"#888";}
