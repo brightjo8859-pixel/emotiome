@@ -484,16 +484,6 @@
       </div>
     </div>
 
-    <!-- API key -->
-    <div class="apikey-box">
-      <label>OpenAI API Key (원본 인물 보존 + 새 배경 재창작에 사용됩니다)</label>
-      <div class="apikey-row">
-        <input class="apikey-input" id="apikeyInput" type="password" placeholder="sk-...">
-        <button class="apikey-toggle" id="toggleKey">보기</button>
-      </div>
-      <div class="apikey-note">키는 브라우저에서만 사용되며 원본 사진 1장과 프롬프트가 OpenAI API로 전송됩니다. API 키 없이 사용하면 원본 사진으로 카드를 미리볼 수 있습니다.</div>
-    </div>
-
     <div class="err-msg" id="sliderError">100%의 마음과 감정 이름을 입력해야 카드가 제작됩니다.</div>
 
     <div class="btn-row">
@@ -1065,15 +1055,6 @@ Raw Korean emotional feeling with minimal background.`
 
   updateTotal();
 
-  /* API key toggle */
-  document.getElementById('toggleKey').addEventListener('click', () => {
-    const inp = document.getElementById('apikeyInput');
-    const btn = document.getElementById('toggleKey');
-    if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '숨기기'; }
-    else { inp.type = 'password'; btn.textContent = '보기'; }
-  });
-
-
   /* ── API 입력 전 구도 가이드 캔버스 생성 ──
      목적: 원본 사진을 그대로 보내면 gpt-image-1이 상반신/클로즈업 구도를 강하게 보존합니다.
      그래서 먼저 1024x1536 세로 캔버스 안에 원본 사진을 52~58% 높이로 축소 배치한
@@ -1248,50 +1229,26 @@ Raw Korean emotional feeling with minimal background.`
     document.getElementById('cardPreview').classList.remove('show');
     document.getElementById('resultError').classList.remove('show');
 
-    const apiKeyRaw = document.getElementById('apikeyInput').value;
-    /* 보이지 않는 특수문자(스마트 따옴표, 전각 공백, zero-width space 등) 제거 — 인쇄 가능한 ASCII만 허용 */
-    const apiKey = apiKeyRaw.replace(/[^\x21-\x7E]/g, '');
     const prompt = buildPrompt();
 
-    if (!apiKey || apiKey.length < 10) {
-      /* 데모 모드: 원본 사진으로 미리보기 */
-      setTimeout(() => showCard(state.imageBase64), 600);
-      return;
-    }
-
-    /* OpenAI gpt-image-1 호출 */
     try {
-      // v13 fixed: OpenAI Images Edits API에는 image를 한 번만 보냅니다.
-      // 원본 사진 하나만 identity reference로 사용하고,
-      // 인물 크기/배경 공간/화풍은 프롬프트로 제어합니다.
-      const originalBlob = await (await fetch(state.imageBase64)).blob();
-      const form = new FormData();
-      form.append('image', originalBlob, 'identity_reference.png');
-      form.append('prompt', prompt);
-      form.append('model', 'gpt-image-1');
-      form.append('size', '1024x1536');
-      form.append('quality', 'high');
-      form.append('input_fidelity', 'high');
+      const apiRes = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageDataUrl: state.imageBase64, prompt })
+      });
 
-      let res;
-      try {
-        res = await fetch('https://api.openai.com/v1/images/edits', {
-          method: 'POST',
-          headers: { Authorization: 'Bearer ' + apiKey },
-          body: form
-        });
-      } catch (fetchErr) {
-        throw new Error('API 키에 허용되지 않는 문자가 섞여 있는 것 같아요. 키를 다시 복사해서 붙여넣어 주세요.');
+      const data = await apiRes.json().catch(() => ({}));
+
+      if (!apiRes.ok) {
+        if (apiRes.status === 429) {
+          throw new Error(data.error || '하루 3회 사용 한도를 모두 사용했습니다. 내일 다시 시도해주세요.');
+        }
+        throw new Error(data.error || '이미지 생성 중 오류가 발생했습니다.');
       }
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || 'OpenAI API 오류 (' + res.status + ')');
-      }
-      const data = await res.json();
-      const resultB64 = data.data?.[0]?.b64_json;
-      if (!resultB64) throw new Error('이미지 결과를 받지 못했습니다.');
-      showCard('data:image/png;base64,' + resultB64);
+      if (!data.image) throw new Error('이미지 결과를 받지 못했습니다.');
+      showCard(data.image);
 
     } catch (err) {
       document.getElementById('loadingArea').style.display = 'none';
@@ -1691,7 +1648,6 @@ document.getElementById("emotionInput").onkeydown=function(e){if(e.key==="Enter"
       document.getElementById('syn' + i).value = '';
     }
     updateTotal();
-    document.getElementById('apikeyInput').value = '';
     document.getElementById('resultError').classList.remove('show');
 
     goToStep(0);
